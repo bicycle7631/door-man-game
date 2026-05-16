@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Door Man" />
+    <meta name="theme-color" content="#8bd3ff" />
+    <title>Door Man</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="game" aria-label="Door Man video game"></canvas>
+
+      <section id="startScreen" class="overlay">
+        <div class="poster">
+          <img src="assets/sprites/door-man.png" alt="" />
+          <h1>Door Man</h1>
+          <p>Fight the bad guys. Save the day. Five hearts.</p>
+          <button id="startButton" type="button">Start Game</button>
+        </div>
+      </section>
+
+      <section id="endScreen" class="overlay hidden">
+        <div class="poster">
+          <h2 id="endTitle">Door Man Wins!</h2>
+          <p id="endText">The boss has been defeated.</p>
+          <button id="restartButton" type="button">Play Again</button>
+        </div>
+      </section>
+
+      <div class="touch-controls" aria-label="Game controls">
+        <div class="move-controls">
+          <button class="pad-button" data-control="left" type="button" aria-label="Move left">←</button>
+          <button class="pad-button" data-control="right" type="button" aria-label="Move right">→</button>
+        </div>
+        <div class="action-controls">
+          <button class="pad-button jump" data-control="jump" type="button" aria-label="Jump">Jump</button>
+          <button class="pad-button attack" data-control="attack" type="button" aria-label="Attack">Attack</button>
+        </div>
+      </div>
+    </main>
+
+    <script src="game.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("sw.js");
+        });
+      }
+    </script>
+  </body>
+</html>

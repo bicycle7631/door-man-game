@@ -1,0 +1,9 @@
+.DS_Store
+
+# Keep original phone photos local. They may contain private EXIF/GPS metadata.
+raw/
+
+# Local sprite-cutting helpers and previews.
+assets/*-grid.jpg
+assets/sprite-preview-sheet.jpg
+assets/sprites/*-preview.jpg
