@@ -7,3 +7,6 @@ raw/
 assets/*-grid.jpg
 assets/sprite-preview-sheet.jpg
 assets/sprites/*-preview.jpg
+
+# Ignore accidental nested repo created by desktop publishing tools.
+door-man-game/
