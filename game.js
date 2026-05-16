@@ -24,6 +24,7 @@ const controls = {
   left: false,
   right: false,
   jump: false,
+  duck: false,
   attack: false,
 };
 
@@ -50,6 +51,7 @@ const hero = {
   hearts: MAX_HEARTS,
   facing: 1,
   grounded: false,
+  ducking: false,
   attackTimer: 0,
   hurtTimer: 0,
 };
@@ -89,6 +91,7 @@ function resetGame() {
   hero.vy = 0;
   hero.hearts = MAX_HEARTS;
   hero.facing = 1;
+  hero.ducking = false;
   hero.attackTimer = 0;
   hero.hurtTimer = 0;
   enemies = [];
@@ -113,6 +116,7 @@ function spawnEnemy(isBoss = false) {
   const size = isBoss ? 1.65 : 1;
   const side = Math.random() < 0.5 ? -1 : 1;
   const shooter = !isBoss && defeated >= 2 && Math.random() < 0.35;
+  const facing = side < 0 ? 1 : -1;
   const enemy = {
     img: shooter ? images.shooter : images.enemies[Math.floor(Math.random() * images.enemies.length)],
     x: side < 0 ? -120 : width + 120,
@@ -120,13 +124,15 @@ function spawnEnemy(isBoss = false) {
     w: (shooter ? 134 : 92) * size,
     h: 124 * size,
     vx: side < 0 ? 62 + defeated * 2 : -62 - defeated * 2,
-    hp: isBoss ? 9 : 2,
-    maxHp: isBoss ? 9 : 2,
+    hp: isBoss ? 12 : 2,
+    maxHp: isBoss ? 12 : 2,
     boss: isBoss,
     shooter,
+    facing,
     hitTimer: 0,
     attackCooldown: 0,
-    shootTimer: shooter ? 1.1 : 0,
+    shootTimer: shooter || isBoss ? 1.1 : 0,
+    dashTimer: isBoss ? 2.4 : 0,
   };
   enemies.push(enemy);
 }
@@ -135,12 +141,23 @@ function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+function heroHitBox() {
+  if (!hero.ducking) return hero;
+  const duckHeight = hero.h * 0.52;
+  return {
+    x: hero.x + hero.w * 0.08,
+    y: hero.y + hero.h - duckHeight,
+    w: hero.w * 0.84,
+    h: duckHeight,
+  };
+}
+
 function attackBox() {
   return {
-    x: hero.facing > 0 ? hero.x + hero.w - 4 : hero.x - 58,
-    y: hero.y + 18,
-    w: 62,
-    h: 52,
+    x: hero.facing > 0 ? hero.x + hero.w - 12 : hero.x - 92,
+    y: hero.y + 22,
+    w: 104,
+    h: 70,
   };
 }
 
@@ -168,14 +185,18 @@ function damageHero(sourceX) {
 }
 
 function shootBullet(enemy) {
-  const direction = enemy.x + enemy.w / 2 < hero.x + hero.w / 2 ? 1 : -1;
+  const direction = enemy.facing;
+  const bossShot = enemy.boss;
+  const highShot = bossShot ? Math.random() < 0.5 : Math.random() < 0.45;
   bullets.push({
     x: enemy.x + (direction > 0 ? enemy.w - 18 : 18),
-    y: enemy.y + enemy.h * 0.42,
-    w: 28,
-    h: 10,
-    vx: direction * 360,
-    life: 2.2,
+    y: enemy.y + enemy.h * (highShot ? 0.34 : 0.64),
+    w: bossShot ? 38 : 28,
+    h: bossShot ? 14 : 10,
+    vx: direction * (bossShot ? 430 : 360),
+    life: 2.4,
+    boss: bossShot,
+    high: highShot,
   });
 }
 
@@ -185,23 +206,25 @@ function update(dt) {
   const left = controls.left || keys.has("ArrowLeft") || keys.has("a");
   const right = controls.right || keys.has("ArrowRight") || keys.has("d");
   const jump = controls.jump || keys.has("ArrowUp") || keys.has("w") || keys.has(" ");
-  const attack = controls.attack || keys.has("Enter") || keys.has("j");
+  const duck = controls.duck || keys.has("ArrowDown") || keys.has("s");
+  const attack = controls.attack || keys.has("Shift") || keys.has("Enter") || keys.has("j");
 
+  hero.ducking = duck && hero.grounded && hero.attackTimer <= 0;
   hero.vx = 0;
   if (left) {
-    hero.vx = -230;
+    hero.vx = hero.ducking ? -115 : -230;
     hero.facing = -1;
   }
   if (right) {
-    hero.vx = 230;
+    hero.vx = hero.ducking ? 115 : 230;
     hero.facing = 1;
   }
-  if (jump && hero.grounded) {
+  if (jump && hero.grounded && !hero.ducking) {
     hero.vy = -760;
     hero.grounded = false;
   }
-  if (attack && hero.attackTimer <= 0) {
-    hero.attackTimer = 0.28;
+  if (attack && hero.attackTimer <= 0 && !hero.ducking) {
+    hero.attackTimer = 0.36;
   }
 
   hero.x += hero.vx * dt;
@@ -226,31 +249,42 @@ function update(dt) {
   }
 
   const hitBox = hero.attackTimer > 0 ? attackBox() : null;
+  const heroBox = heroHitBox();
   enemies.forEach((enemy) => {
     const towardHero = Math.sign(hero.x - enemy.x) || 1;
     const distance = Math.abs(hero.x - enemy.x);
-    const speed = enemy.boss ? 42 : 58 + defeated * 2;
-    enemy.vx = enemy.shooter && distance < 360 ? 0 : towardHero * speed;
+    enemy.facing = towardHero;
+    const speed = enemy.boss ? 54 : 46 + defeated * 2;
+    const holdingAim = enemy.shooter && distance < 360;
+    enemy.vx = holdingAim ? 0 : towardHero * speed;
+    if (enemy.boss) {
+      enemy.dashTimer = Math.max(0, enemy.dashTimer - dt);
+      if (enemy.dashTimer <= 0) {
+        enemy.vx = towardHero * 240;
+        enemy.dashTimer = 2.8;
+        burst(enemy.x + enemy.w / 2, enemy.y + enemy.h, "#df3e3e");
+      }
+    }
     enemy.x += enemy.vx * dt;
     enemy.hitTimer = Math.max(0, enemy.hitTimer - dt);
     enemy.attackCooldown = Math.max(0, enemy.attackCooldown - dt);
     enemy.shootTimer = Math.max(0, enemy.shootTimer - dt);
 
-    if (enemy.shooter && enemy.shootTimer <= 0) {
+    if ((enemy.shooter || enemy.boss) && enemy.shootTimer <= 0) {
       shootBullet(enemy);
       burst(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, "#171511");
-      enemy.shootTimer = 3;
+      enemy.shootTimer = enemy.boss ? 1.8 : 3;
     }
 
     if (hitBox && rectsOverlap(hitBox, enemy) && enemy.hitTimer <= 0) {
-      enemy.hp -= 1;
+      enemy.hp -= enemy.boss ? 1 : 2;
       enemy.hitTimer = 0.22;
-      enemy.x += hero.facing * 26;
+      enemy.x += hero.facing * (enemy.boss ? 18 : 42);
       burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, enemy.boss ? "#df3e3e" : "#171511");
     }
 
-    if (rectsOverlap(hero, enemy) && hero.hurtTimer <= 0 && enemy.attackCooldown <= 0) {
-      enemy.attackCooldown = enemy.boss ? 1.15 : 1.45;
+    if (rectsOverlap(heroBox, enemy) && hero.hurtTimer <= 0 && enemy.attackCooldown <= 0) {
+      enemy.attackCooldown = enemy.boss ? 1.2 : 1.75;
       damageHero(enemy.x + enemy.w / 2);
     }
   });
@@ -258,7 +292,12 @@ function update(dt) {
   bullets.forEach((bullet) => {
     bullet.x += bullet.vx * dt;
     bullet.life -= dt;
-    if (rectsOverlap(hero, bullet)) {
+    if (hitBox && rectsOverlap(hitBox, bullet)) {
+      bullet.life = 0;
+      burst(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, "#ffd35a");
+      return;
+    }
+    if (rectsOverlap(heroBox, bullet)) {
       bullet.life = 0;
       damageHero(bullet.x);
     }
@@ -328,27 +367,52 @@ function drawImageFlipped(img, x, y, w, h, flipped, alpha = 1) {
 
 function drawHero() {
   const attacking = hero.attackTimer > 0;
-  const img = attacking ? images.kick : images.hero;
-  const scale = attacking ? 1.18 : 1;
+  const img = images.hero;
+  const scale = attacking ? 1.08 : 1;
   const drawW = hero.w * scale;
-  const drawH = hero.h * scale;
+  const drawH = hero.h * scale * (hero.ducking ? 0.58 : 1);
   const drawX = hero.x - (drawW - hero.w) / 2;
-  const drawY = hero.y - (drawH - hero.h);
+  const drawY = hero.y + hero.h - drawH;
   const alpha = hero.hurtTimer > 0 && Math.floor(hero.hurtTimer * 14) % 2 === 0 ? 0.35 : 1;
   drawImageFlipped(img, drawX, drawY, drawW, drawH, hero.facing < 0, alpha);
 
   if (attacking) {
-    const box = attackBox();
-    ctx.strokeStyle = "#ffd35a";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.arc(box.x + box.w / 2, box.y + box.h / 2, 34, 0.2, Math.PI * 1.8);
-    ctx.stroke();
+    drawDoorSmack();
   }
 }
 
+function drawDoorSmack() {
+  const box = attackBox();
+  const hingeX = hero.facing > 0 ? hero.x + hero.w * 0.72 : hero.x + hero.w * 0.28;
+  const hingeY = hero.y + 26;
+  const doorW = box.w * 0.75;
+  const doorH = box.h;
+  const swing = 0.35 + hero.attackTimer * 2.2;
+  ctx.save();
+  ctx.translate(hingeX, hingeY);
+  ctx.scale(hero.facing, 1);
+  ctx.rotate(-swing);
+  ctx.fillStyle = "rgba(255, 211, 90, 0.45)";
+  ctx.strokeStyle = "#171511";
+  ctx.lineWidth = 5;
+  roundRect(0, 0, doorW, doorH, 5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#171511";
+  ctx.beginPath();
+  ctx.arc(doorW - 16, doorH * 0.48, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.strokeStyle = "#ffd35a";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(box.x + box.w / 2, box.y + box.h / 2, 48, 0.1, Math.PI * 1.9);
+  ctx.stroke();
+}
+
 function drawEnemy(enemy) {
-  const flipped = enemy.x > hero.x;
+  const flipped = enemy.facing > 0;
   if (enemy.boss) {
     ctx.fillStyle = "rgba(223, 62, 62, 0.2)";
     ctx.beginPath();
@@ -370,12 +434,15 @@ function drawEnemy(enemy) {
 function drawBullets() {
   bullets.forEach((bullet) => {
     ctx.save();
-    ctx.fillStyle = "#171511";
+    ctx.fillStyle = bullet.boss ? "#df3e3e" : "#171511";
     ctx.strokeStyle = "#fff8d4";
     ctx.lineWidth = 2;
     roundRect(bullet.x, bullet.y, bullet.w, bullet.h, 5);
     ctx.fill();
     ctx.stroke();
+    ctx.fillStyle = "#fff8d4";
+    ctx.font = "900 10px Trebuchet MS, sans-serif";
+    ctx.fillText(bullet.high ? "HI" : "LO", bullet.x + 5, bullet.y - 4);
     ctx.restore();
   });
 }
@@ -466,7 +533,7 @@ function loop(time) {
 function bindControls() {
   window.addEventListener("keydown", (event) => {
     keys.add(event.key);
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", " ", "Enter"].includes(event.key)) {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Enter", "Shift"].includes(event.key)) {
       event.preventDefault();
     }
   });

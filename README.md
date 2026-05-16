@@ -22,6 +22,8 @@ http://YOUR-MAC-IP:8080
 
 The game has touch buttons, five hearts in the upper-right corner, punching bad guys, a gun bad guy who shoots every three seconds, and a boss fight after seven bad guys.
 
+Keyboard controls: arrow keys move, down arrow ducks, space jumps, and Shift attacks.
+
 ## Make It More Durable
 
 This is now an installable web app with an offline cache. After it loads once on the iPad, Safari can keep the game files cached.

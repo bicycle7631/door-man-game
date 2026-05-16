@@ -129,19 +129,23 @@ button {
 }
 
 .pad-button {
-  width: clamp(66px, 13vw, 92px);
-  height: clamp(58px, 10vw, 82px);
+  width: clamp(64px, 11vw, 86px);
+  height: clamp(56px, 9vw, 76px);
   font-size: clamp(24px, 5vw, 34px);
   font-weight: 900;
 }
 
 .pad-button.attack {
-  width: clamp(108px, 18vw, 142px);
+  width: clamp(102px, 17vw, 132px);
   background: var(--gold);
 }
 
+.pad-button.duck {
+  width: clamp(86px, 15vw, 112px);
+}
+
 .pad-button.jump {
-  width: clamp(92px, 16vw, 122px);
+  width: clamp(86px, 15vw, 112px);
 }
 
 .pad-button:active,

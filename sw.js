@@ -1,4 +1,4 @@
-const CACHE_NAME = "door-man-v1";
+const CACHE_NAME = "door-man-v3";
 const GAME_FILES = [
   "./",
   "./index.html",
