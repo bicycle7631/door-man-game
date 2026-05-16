@@ -1,6 +1,6 @@
 # Door Man
 
-A tiny browser game made from Parker's artwork.
+A tiny browser game made from P's artwork.
 
 ## Play on this Mac
 
