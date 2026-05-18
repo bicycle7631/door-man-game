@@ -20,7 +20,7 @@
         <div class="poster">
           <img src="assets/sprites/door-man.png" alt="" />
           <h1>Door Man</h1>
-          <p>Fight the bad guys. Save the day. Five hearts.</p>
+          <p>Four levels, five hearts, keys, wind, hazards, and a boss fight.</p>
           <button id="startButton" type="button">Start Game</button>
         </div>
       </section>
@@ -46,11 +46,11 @@
       </div>
     </main>
 
-    <script src="game.js"></script>
+    <script src="game.js?v=4"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("sw.js");
+          navigator.serviceWorker.register("sw.js?v=4");
         });
       }
     </script>

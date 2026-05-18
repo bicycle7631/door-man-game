@@ -20,7 +20,7 @@ Keep the server running on the Mac, make sure the iPad is on the same Wi-Fi, the
 http://YOUR-MAC-IP:8080
 ```
 
-The game has touch buttons, five hearts in the upper-right corner, punching bad guys, a gun bad guy who shoots every three seconds, and a boss fight after seven bad guys.
+The game has touch buttons, five hearts in the upper-right corner, four levels, keys to collect, wind, spike hazards, heart pickups, punching bad guys, a gun bad guy who shoots high and low shots, and a boss fight.
 
 Keyboard controls: arrow keys move, down arrow ducks, space jumps, and Shift attacks.
 

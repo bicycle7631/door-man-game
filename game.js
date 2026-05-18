@@ -7,7 +7,6 @@ const endText = document.getElementById("endText");
 
 const ASSETS = {
   hero: "assets/sprites/door-man.png",
-  kick: "assets/sprites/door-kick.png",
   shooter: "assets/sprites/bad-shooter.png",
   enemies: [
     "assets/sprites/bad-normal.png",
@@ -18,6 +17,60 @@ const ASSETS = {
 };
 
 const MAX_HEARTS = 5;
+const LEVELS = [
+  {
+    name: "Level 1: Front Yard",
+    goal: "Smack 5 bad guys",
+    target: 5,
+    maxEnemies: 2,
+    spawnMin: 1.1,
+    spawnMax: 1.9,
+    shooterAfter: 99,
+    shooterChance: 0,
+    enemySpeed: 42,
+  },
+  {
+    name: "Level 2: Key Run",
+    goal: "Find 3 keys, then smack 4 bad guys",
+    target: 4,
+    keyTarget: 3,
+    maxEnemies: 3,
+    spawnMin: 1.0,
+    spawnMax: 1.8,
+    shooterAfter: 0,
+    shooterChance: 0.45,
+    enemySpeed: 46,
+  },
+  {
+    name: "Level 3: Windy Hall",
+    goal: "Watch the wind and survive 6 bad guys",
+    target: 6,
+    maxEnemies: 3,
+    spawnMin: 0.9,
+    spawnMax: 1.5,
+    shooterAfter: 1,
+    shooterChance: 0.35,
+    enemySpeed: 50,
+    gust: true,
+    hazards: true,
+    pickups: true,
+  },
+  {
+    name: "Level 4: Boss Door",
+    goal: "Beat the boss",
+    target: 0,
+    maxEnemies: 2,
+    spawnMin: 1.6,
+    spawnMax: 2.4,
+    shooterAfter: 0,
+    shooterChance: 0.25,
+    enemySpeed: 48,
+    boss: true,
+    bossAfter: 2,
+    hazards: true,
+  },
+];
+
 const images = {};
 const keys = new Set();
 const controls = {
@@ -34,12 +87,24 @@ let height = 0;
 let groundY = 0;
 let state = "start";
 let lastTime = 0;
-let spawnTimer = 0;
+let currentLevelIndex = 0;
 let defeated = 0;
+let collectedKeys = 0;
+let spawnTimer = 0;
+let keyTimer = 0;
+let pickupTimer = 0;
+let levelBannerTimer = 0;
+let levelCompleteTimer = 0;
 let bossSpawned = false;
+let bossDefeated = false;
+let gustPhase = 1;
+let gustTimer = 0;
 let particles = [];
 let enemies = [];
 let bullets = [];
+let levelKeys = [];
+let pickups = [];
+let hazards = [];
 
 const hero = {
   x: 120,
@@ -56,6 +121,10 @@ const hero = {
   hurtTimer: 0,
 };
 
+function level() {
+  return LEVELS[currentLevelIndex];
+}
+
 function loadImage(src) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -66,7 +135,6 @@ function loadImage(src) {
 
 async function loadAssets() {
   images.hero = await loadImage(ASSETS.hero);
-  images.kick = await loadImage(ASSETS.kick);
   images.shooter = await loadImage(ASSETS.shooter);
   images.enemies = await Promise.all(ASSETS.enemies.map(loadImage));
 }
@@ -82,59 +150,137 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   groundY = Math.max(260, height * 0.72);
   hero.y = Math.min(hero.y || groundY - hero.h, groundY - hero.h);
+  buildHazards();
 }
 
 function resetGame() {
-  hero.x = Math.min(140, width * 0.18);
-  hero.y = groundY - hero.h;
-  hero.vx = 0;
-  hero.vy = 0;
   hero.hearts = MAX_HEARTS;
-  hero.facing = 1;
-  hero.ducking = false;
-  hero.attackTimer = 0;
-  hero.hurtTimer = 0;
-  enemies = [];
-  bullets = [];
-  particles = [];
-  defeated = 0;
-  bossSpawned = false;
-  spawnTimer = 0.8;
+  startLevel(0);
   state = "playing";
   startScreen.classList.add("hidden");
   endScreen.classList.add("hidden");
 }
 
+function startLevel(index) {
+  currentLevelIndex = index;
+  defeated = 0;
+  collectedKeys = 0;
+  enemies = [];
+  bullets = [];
+  particles = [];
+  levelKeys = [];
+  pickups = [];
+  bossSpawned = false;
+  bossDefeated = false;
+  spawnTimer = 0.8;
+  keyTimer = 0.6;
+  pickupTimer = 4.5;
+  levelBannerTimer = 2.2;
+  levelCompleteTimer = 0;
+  gustPhase = 1;
+  gustTimer = 2.4;
+  hero.x = Math.min(140, width * 0.18);
+  hero.y = groundY - hero.h;
+  hero.vx = 0;
+  hero.vy = 0;
+  hero.facing = 1;
+  hero.ducking = false;
+  hero.attackTimer = 0;
+  hero.hurtTimer = 0;
+  buildHazards();
+}
+
+function buildHazards() {
+  hazards = [];
+  if (!level()?.hazards || !width) return;
+  const count = currentLevelIndex === 3 ? 3 : 2;
+  for (let i = 0; i < count; i += 1) {
+    hazards.push({
+      x: width * (0.36 + i * 0.18),
+      y: groundY - 12,
+      w: 54,
+      h: 16,
+      pulse: Math.random() * Math.PI,
+    });
+  }
+}
+
 function showEnd(won) {
   state = "end";
   endTitle.textContent = won ? "Door Man Wins!" : "Try Again";
-  endText.textContent = won ? "The boss has been defeated." : "The bad guys got Door Man.";
+  endText.textContent = won ? "Door Man cleared every level." : "The bad guys got Door Man.";
   endScreen.classList.remove("hidden");
 }
 
+function levelIsComplete() {
+  const cfg = level();
+  const keysDone = !cfg.keyTarget || collectedKeys >= cfg.keyTarget;
+  const badGuysDone = defeated >= cfg.target;
+  const bossDone = !cfg.boss || bossDefeated;
+  return keysDone && badGuysDone && bossDone;
+}
+
+function completeLevel() {
+  if (levelCompleteTimer > 0) return;
+  levelCompleteTimer = 2.1;
+  enemies = [];
+  bullets = [];
+  pickups = [];
+  burst(hero.x + hero.w / 2, hero.y + 30, "#ffd35a", 18);
+}
+
+function advanceLevel() {
+  if (currentLevelIndex >= LEVELS.length - 1) {
+    showEnd(true);
+  } else {
+    startLevel(currentLevelIndex + 1);
+  }
+}
+
 function spawnEnemy(isBoss = false) {
-  const size = isBoss ? 1.65 : 1;
+  const cfg = level();
   const side = Math.random() < 0.5 ? -1 : 1;
-  const shooter = !isBoss && defeated >= 2 && Math.random() < 0.35;
-  const facing = side < 0 ? 1 : -1;
+  const shooter = !isBoss && defeated >= cfg.shooterAfter && Math.random() < cfg.shooterChance;
+  const size = isBoss ? 1.72 : 1;
   const enemy = {
     img: shooter ? images.shooter : images.enemies[Math.floor(Math.random() * images.enemies.length)],
-    x: side < 0 ? -120 : width + 120,
+    x: side < 0 ? -130 : width + 130,
     y: groundY - 124 * size,
     w: (shooter ? 134 : 92) * size,
     h: 124 * size,
-    vx: side < 0 ? 62 + defeated * 2 : -62 - defeated * 2,
-    hp: isBoss ? 12 : 2,
-    maxHp: isBoss ? 12 : 2,
+    hp: isBoss ? 14 : 2,
+    maxHp: isBoss ? 14 : 2,
     boss: isBoss,
     shooter,
-    facing,
+    facing: side < 0 ? 1 : -1,
     hitTimer: 0,
     attackCooldown: 0,
-    shootTimer: shooter || isBoss ? 1.1 : 0,
-    dashTimer: isBoss ? 2.4 : 0,
+    shootTimer: shooter || isBoss ? 1.0 : 0,
+    dashTimer: isBoss ? 2.2 : 0,
   };
   enemies.push(enemy);
+}
+
+function spawnKey() {
+  if (levelKeys.length >= 2) return;
+  levelKeys.push({
+    x: 130 + Math.random() * Math.max(120, width - 280),
+    y: groundY - 135 - Math.random() * 90,
+    w: 34,
+    h: 34,
+    bob: Math.random() * Math.PI * 2,
+  });
+}
+
+function spawnPickup() {
+  if (hero.hearts >= MAX_HEARTS || pickups.length > 0) return;
+  pickups.push({
+    x: 160 + Math.random() * Math.max(120, width - 320),
+    y: groundY - 74,
+    w: 34,
+    h: 34,
+    kind: "heart",
+  });
 }
 
 function rectsOverlap(a, b) {
@@ -161,21 +307,21 @@ function attackBox() {
   };
 }
 
-function burst(x, y, color = "#171511") {
-  for (let i = 0; i < 10; i += 1) {
+function burst(x, y, color = "#171511", count = 10) {
+  for (let i = 0; i < count; i += 1) {
     particles.push({
       x,
       y,
-      vx: (Math.random() - 0.5) * 220,
-      vy: (Math.random() - 0.8) * 190,
-      life: 0.45 + Math.random() * 0.25,
+      vx: (Math.random() - 0.5) * 240,
+      vy: (Math.random() - 0.85) * 210,
+      life: 0.45 + Math.random() * 0.3,
       color,
     });
   }
 }
 
 function damageHero(sourceX) {
-  if (hero.hurtTimer > 0) return;
+  if (hero.hurtTimer > 0 || levelCompleteTimer > 0) return;
   hero.hearts -= 1;
   hero.hurtTimer = 1.35;
   const pushDirection = sourceX < hero.x ? 1 : -1;
@@ -187,13 +333,13 @@ function damageHero(sourceX) {
 function shootBullet(enemy) {
   const direction = enemy.facing;
   const bossShot = enemy.boss;
-  const highShot = bossShot ? Math.random() < 0.5 : Math.random() < 0.45;
+  const highShot = bossShot ? Math.random() < 0.52 : Math.random() < 0.45;
   bullets.push({
     x: enemy.x + (direction > 0 ? enemy.w - 18 : 18),
     y: enemy.y + enemy.h * (highShot ? 0.34 : 0.64),
     w: bossShot ? 38 : 28,
     h: bossShot ? 14 : 10,
-    vx: direction * (bossShot ? 430 : 360),
+    vx: direction * (bossShot ? 440 : 360),
     life: 2.4,
     boss: bossShot,
     high: highShot,
@@ -203,6 +349,25 @@ function shootBullet(enemy) {
 function update(dt) {
   if (state !== "playing") return;
 
+  if (levelCompleteTimer > 0) {
+    levelCompleteTimer -= dt;
+    updateHero(dt);
+    updateParticles(dt);
+    if (levelCompleteTimer <= 0) advanceLevel();
+    return;
+  }
+
+  updateHero(dt);
+  updateLevelTimers(dt);
+  updateEnemies(dt);
+  updateBullets(dt);
+  updateCollectibles(dt);
+  updateParticles(dt);
+
+  if (levelIsComplete()) completeLevel();
+}
+
+function updateHero(dt) {
   const left = controls.left || keys.has("ArrowLeft") || keys.has("a");
   const right = controls.right || keys.has("ArrowRight") || keys.has("d");
   const jump = controls.jump || keys.has("ArrowUp") || keys.has("w") || keys.has(" ");
@@ -218,6 +383,9 @@ function update(dt) {
   if (right) {
     hero.vx = hero.ducking ? 115 : 230;
     hero.facing = 1;
+  }
+  if (level().gust && hero.grounded && !hero.ducking) {
+    hero.vx += gustPhase * 45;
   }
   if (jump && hero.grounded && !hero.ducking) {
     hero.vy = -760;
@@ -238,33 +406,61 @@ function update(dt) {
   hero.x = Math.max(10, Math.min(width - hero.w - 10, hero.x));
   hero.attackTimer = Math.max(0, hero.attackTimer - dt);
   hero.hurtTimer = Math.max(0, hero.hurtTimer - dt);
+}
 
+function updateLevelTimers(dt) {
+  levelBannerTimer = Math.max(0, levelBannerTimer - dt);
   spawnTimer -= dt;
-  if (!bossSpawned && defeated >= 7) {
-    bossSpawned = true;
-    spawnEnemy(true);
-  } else if (!bossSpawned && spawnTimer <= 0 && enemies.length < 3) {
-    spawnEnemy(false);
-    spawnTimer = 1.4 + Math.random() * 1.2;
+  keyTimer -= dt;
+  pickupTimer -= dt;
+
+  if (level().gust) {
+    gustTimer -= dt;
+    if (gustTimer <= 0) {
+      gustPhase *= -1;
+      gustTimer = 2.6;
+      burst(width / 2, groundY - 80, "#fff8d4", 8);
+    }
   }
 
+  if (level().keyTarget && collectedKeys < level().keyTarget && keyTimer <= 0) {
+    spawnKey();
+    keyTimer = 1.7;
+  }
+  if (level().pickups && pickupTimer <= 0) {
+    spawnPickup();
+    pickupTimer = 7.5;
+  }
+  if (level().boss && !bossSpawned && defeated >= level().bossAfter) {
+    bossSpawned = true;
+    spawnEnemy(true);
+  }
+  if (spawnTimer <= 0 && enemies.length < level().maxEnemies) {
+    if (!level().boss || !bossSpawned || Math.random() < 0.45) spawnEnemy(false);
+    spawnTimer = level().spawnMin + Math.random() * (level().spawnMax - level().spawnMin);
+  }
+}
+
+function updateEnemies(dt) {
   const hitBox = hero.attackTimer > 0 ? attackBox() : null;
   const heroBox = heroHitBox();
   enemies.forEach((enemy) => {
     const towardHero = Math.sign(hero.x - enemy.x) || 1;
     const distance = Math.abs(hero.x - enemy.x);
     enemy.facing = towardHero;
-    const speed = enemy.boss ? 54 : 46 + defeated * 2;
+    const speed = enemy.boss ? 56 : level().enemySpeed + defeated * 2;
     const holdingAim = enemy.shooter && distance < 360;
     enemy.vx = holdingAim ? 0 : towardHero * speed;
+
     if (enemy.boss) {
       enemy.dashTimer = Math.max(0, enemy.dashTimer - dt);
       if (enemy.dashTimer <= 0) {
-        enemy.vx = towardHero * 240;
-        enemy.dashTimer = 2.8;
+        enemy.vx = towardHero * 255;
+        enemy.dashTimer = 2.65;
         burst(enemy.x + enemy.w / 2, enemy.y + enemy.h, "#df3e3e");
       }
     }
+
     enemy.x += enemy.vx * dt;
     enemy.hitTimer = Math.max(0, enemy.hitTimer - dt);
     enemy.attackCooldown = Math.max(0, enemy.attackCooldown - dt);
@@ -273,7 +469,7 @@ function update(dt) {
     if ((enemy.shooter || enemy.boss) && enemy.shootTimer <= 0) {
       shootBullet(enemy);
       burst(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, "#171511");
-      enemy.shootTimer = enemy.boss ? 1.8 : 3;
+      enemy.shootTimer = enemy.boss ? 1.65 : 3;
     }
 
     if (hitBox && rectsOverlap(hitBox, enemy) && enemy.hitTimer <= 0) {
@@ -289,6 +485,21 @@ function update(dt) {
     }
   });
 
+  enemies = enemies.filter((enemy) => {
+    if (enemy.hp > 0) return true;
+    burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#ffd35a");
+    if (enemy.boss) {
+      bossDefeated = true;
+    } else {
+      defeated += 1;
+    }
+    return false;
+  });
+}
+
+function updateBullets(dt) {
+  const hitBox = hero.attackTimer > 0 ? attackBox() : null;
+  const heroBox = heroHitBox();
   bullets.forEach((bullet) => {
     bullet.x += bullet.vx * dt;
     bullet.life -= dt;
@@ -303,15 +514,36 @@ function update(dt) {
     }
   });
   bullets = bullets.filter((bullet) => bullet.life > 0 && bullet.x > -80 && bullet.x < width + 80);
+}
 
-  enemies = enemies.filter((enemy) => {
-    if (enemy.hp > 0) return true;
-    defeated += enemy.boss ? 0 : 1;
-    burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#ffd35a");
-    if (enemy.boss) showEnd(true);
-    return false;
+function updateCollectibles(dt) {
+  const heroBox = heroHitBox();
+  levelKeys.forEach((item) => {
+    item.bob += dt * 4;
+    if (rectsOverlap(heroBox, item)) {
+      item.collected = true;
+      collectedKeys += 1;
+      burst(item.x + item.w / 2, item.y + item.h / 2, "#ffd35a", 12);
+    }
   });
+  levelKeys = levelKeys.filter((item) => !item.collected);
 
+  pickups.forEach((item) => {
+    if (rectsOverlap(heroBox, item)) {
+      item.collected = true;
+      hero.hearts = Math.min(MAX_HEARTS, hero.hearts + 1);
+      burst(item.x + item.w / 2, item.y + item.h / 2, "#df3e3e", 12);
+    }
+  });
+  pickups = pickups.filter((item) => !item.collected);
+
+  hazards.forEach((hazard) => {
+    hazard.pulse += dt * 5;
+    if (rectsOverlap(heroBox, hazard)) damageHero(hazard.x + hazard.w / 2);
+  });
+}
+
+function updateParticles(dt) {
   particles.forEach((p) => {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
@@ -322,9 +554,10 @@ function update(dt) {
 }
 
 function drawBackground() {
+  const cfg = level();
   const sky = ctx.createLinearGradient(0, 0, 0, groundY);
-  sky.addColorStop(0, "#8bd3ff");
-  sky.addColorStop(1, "#d7f5ff");
+  sky.addColorStop(0, cfg.gust ? "#95c8ff" : "#8bd3ff");
+  sky.addColorStop(1, cfg.boss ? "#f6d0c8" : "#d7f5ff");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, width, height);
 
@@ -333,9 +566,21 @@ function drawBackground() {
   ctx.arc(width - 90, 78, 42, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#72c866";
+  if (cfg.gust) {
+    ctx.strokeStyle = "rgba(255, 253, 242, 0.85)";
+    ctx.lineWidth = 4;
+    for (let y = 120; y < groundY - 40; y += 56) {
+      ctx.beginPath();
+      ctx.moveTo(gustPhase > 0 ? 30 : width - 30, y);
+      ctx.lineTo(gustPhase > 0 ? 120 : width - 120, y - 16);
+      ctx.lineTo(gustPhase > 0 ? 210 : width - 210, y);
+      ctx.stroke();
+    }
+  }
+
+  ctx.fillStyle = cfg.boss ? "#84655a" : "#72c866";
   ctx.fillRect(0, groundY, width, height - groundY);
-  ctx.fillStyle = "#4f9d4d";
+  ctx.fillStyle = cfg.boss ? "#5c443d" : "#4f9d4d";
   for (let x = -40; x < width + 40; x += 70) {
     ctx.beginPath();
     ctx.moveTo(x, groundY);
@@ -367,18 +612,13 @@ function drawImageFlipped(img, x, y, w, h, flipped, alpha = 1) {
 
 function drawHero() {
   const attacking = hero.attackTimer > 0;
-  const img = images.hero;
-  const scale = attacking ? 1.08 : 1;
-  const drawW = hero.w * scale;
-  const drawH = hero.h * scale * (hero.ducking ? 0.58 : 1);
+  const drawW = hero.w * (attacking ? 1.08 : 1);
+  const drawH = hero.h * (attacking ? 1.08 : 1) * (hero.ducking ? 0.58 : 1);
   const drawX = hero.x - (drawW - hero.w) / 2;
   const drawY = hero.y + hero.h - drawH;
   const alpha = hero.hurtTimer > 0 && Math.floor(hero.hurtTimer * 14) % 2 === 0 ? 0.35 : 1;
-  drawImageFlipped(img, drawX, drawY, drawW, drawH, hero.facing < 0, alpha);
-
-  if (attacking) {
-    drawDoorSmack();
-  }
+  drawImageFlipped(images.hero, drawX, drawY, drawW, drawH, hero.facing < 0, alpha);
+  if (attacking) drawDoorSmack();
 }
 
 function drawDoorSmack() {
@@ -412,14 +652,13 @@ function drawDoorSmack() {
 }
 
 function drawEnemy(enemy) {
-  const flipped = enemy.facing > 0;
   if (enemy.boss) {
     ctx.fillStyle = "rgba(223, 62, 62, 0.2)";
     ctx.beginPath();
     ctx.arc(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, enemy.w * 0.75, 0, Math.PI * 2);
     ctx.fill();
   }
-  drawImageFlipped(enemy.img, enemy.x, enemy.y, enemy.w, enemy.h, flipped, enemy.hitTimer > 0 ? 0.55 : 1);
+  drawImageFlipped(enemy.img, enemy.x, enemy.y, enemy.w, enemy.h, enemy.facing > 0, enemy.hitTimer > 0 ? 0.55 : 1);
   if (enemy.boss) {
     ctx.fillStyle = "#171511";
     ctx.fillRect(enemy.x, enemy.y - 20, enemy.w, 10);
@@ -447,34 +686,95 @@ function drawBullets() {
   });
 }
 
+function drawCollectibles() {
+  levelKeys.forEach((key) => {
+    const y = key.y + Math.sin(key.bob) * 8;
+    ctx.save();
+    ctx.strokeStyle = "#171511";
+    ctx.fillStyle = "#ffd35a";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(key.x + 11, y + 13, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(key.x + 20, y + 13);
+    ctx.lineTo(key.x + 36, y + 13);
+    ctx.lineTo(key.x + 36, y + 22);
+    ctx.moveTo(key.x + 29, y + 13);
+    ctx.lineTo(key.x + 29, y + 20);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  pickups.forEach((item) => drawHeart(item.x + 17, item.y + 18, "#df3e3e"));
+
+  hazards.forEach((hazard) => {
+    ctx.save();
+    ctx.fillStyle = Math.sin(hazard.pulse) > 0 ? "#171511" : "#df3e3e";
+    for (let x = hazard.x; x < hazard.x + hazard.w; x += 18) {
+      ctx.beginPath();
+      ctx.moveTo(x, hazard.y + hazard.h);
+      ctx.lineTo(x + 9, hazard.y);
+      ctx.lineTo(x + 18, hazard.y + hazard.h);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+
 function drawHud() {
   ctx.save();
-  ctx.fillStyle = "rgba(245, 239, 220, 0.82)";
+  ctx.fillStyle = "rgba(245, 239, 220, 0.86)";
   ctx.strokeStyle = "#171511";
   ctx.lineWidth = 4;
-  roundRect(14, 14, 172, 62, 8);
+  roundRect(14, 14, 292, 72, 8);
   ctx.fill();
   ctx.stroke();
 
   ctx.fillStyle = "#171511";
-  ctx.font = "900 24px Trebuchet MS, sans-serif";
-  ctx.fillText(`Bad guys: ${defeated}/7`, 30, 53);
+  ctx.font = "900 19px Trebuchet MS, sans-serif";
+  ctx.fillText(level().name, 28, 39);
+  ctx.font = "800 16px Trebuchet MS, sans-serif";
+  const keyText = level().keyTarget ? ` | Keys: ${collectedKeys}/${level().keyTarget}` : "";
+  ctx.fillText(`Bad guys: ${defeated}/${level().target}${keyText}`, 28, 66);
 
   const heartPanelWidth = 270;
   const heartPanelX = Math.max(14, width - heartPanelWidth - 14);
   roundRect(heartPanelX, 14, heartPanelWidth, 62, 8);
   ctx.fill();
   ctx.stroke();
-
   for (let i = 0; i < MAX_HEARTS; i += 1) {
     drawHeart(heartPanelX + 36 + i * 48, 45, i < hero.hearts ? "#df3e3e" : "#fffdf2");
   }
 
-  if (bossSpawned) {
-    ctx.fillStyle = "#df3e3e";
-    ctx.font = "900 32px Trebuchet MS, sans-serif";
-    ctx.fillText("BOSS FIGHT!", Math.max(18, width / 2 - 92), 52);
+  if (level().gust) {
+    ctx.fillStyle = "#171511";
+    ctx.font = "900 22px Trebuchet MS, sans-serif";
+    ctx.fillText(gustPhase > 0 ? "WIND ->" : "<- WIND", Math.max(18, width / 2 - 58), 54);
   }
+  if (levelCompleteTimer > 0) drawCenterBanner("Level Clear!", level().goal);
+  if (levelBannerTimer > 0) drawCenterBanner(level().name, level().goal);
+  ctx.restore();
+}
+
+function drawCenterBanner(title, subtitle) {
+  const panelW = Math.min(520, width - 36);
+  const panelX = (width - panelW) / 2;
+  const panelY = Math.max(104, height * 0.18);
+  ctx.save();
+  ctx.fillStyle = "rgba(245, 239, 220, 0.92)";
+  ctx.strokeStyle = "#171511";
+  ctx.lineWidth = 5;
+  roundRect(panelX, panelY, panelW, 102, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#171511";
+  ctx.textAlign = "center";
+  ctx.font = "900 34px Trebuchet MS, sans-serif";
+  ctx.fillText(title, width / 2, panelY + 43);
+  ctx.font = "800 20px Trebuchet MS, sans-serif";
+  ctx.fillText(subtitle, width / 2, panelY + 75);
   ctx.restore();
 }
 
@@ -515,6 +815,7 @@ function drawParticles() {
 
 function render() {
   drawBackground();
+  drawCollectibles();
   enemies.forEach(drawEnemy);
   drawBullets();
   drawHero();
